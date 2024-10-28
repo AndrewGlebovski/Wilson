@@ -20,32 +20,23 @@
 template <size_t BufferSize>
 class TcpClient {
  public:
-  // Creates socket and binds it to the provided address.
-  TcpClient(const in_addr& ip, in_port_t port) {
+  // Creates socket.
+  TcpClient() {
     buffer = new char[BufferSize];
 
     server_socket = socket(AF_INET, SOCK_STREAM, 0);
     ASSERT(server_socket > -1, "Failed to create server socket.\n");
-
-    sockaddr_in addr = {};
-
-    addr.sin_family = AF_INET;
-    addr.sin_addr = ip;
-    addr.sin_port = port;
-
-    int error = bind(server_socket, (sockaddr*)(&addr), sizeof(addr));
-    ASSERT(error == 0, "Failed to bind server socket.\n");
   }
 
   // Non-Copyable and Non-Movable
   TcpClient(const TcpClient&) = delete;
   TcpClient& operator=(const TcpClient&) = delete;
 
-  bool Connect(const in_addr& ip, in_port_t port) {
+  bool Connect(in_addr_t ip, in_port_t port) {
     sockaddr_in addr = {};
 
     addr.sin_family = AF_INET;
-    addr.sin_addr = ip;
+    addr.sin_addr = {ip};
     addr.sin_port = port;
 
     int error = connect(server_socket, (sockaddr*)(&addr), sizeof(sockaddr_in));
@@ -68,19 +59,15 @@ class TcpClient {
     printf("You: ");
     EnterMessage(buffer, BufferSize);
 
-    int error = send(server_socket, buffer, strlen(buffer) + 1, 0);
-    ASSERT(error > -1, "Failed to send message.\n");
+    size_t msg_size = strlen(buffer) + 1;
 
-    error = recv(server_socket, buffer, BufferSize, 0);
-    ASSERT(error > -1, "Failed to receive message.\n");
-
-    if (error == 0) {
-      printf("Server disconnected.\n");
-      Disconnect();
+    Send(msg_size);
+    
+    if (!Receive()) {
       return false;
     }
 
-    PrintMessage("Server", buffer);
+    PrintMessage("Server: ", buffer);
     return true;
   }
 
@@ -90,6 +77,43 @@ class TcpClient {
   }
 
  private:
+  // Waits for message and stores it in buffer.
+  bool Receive() {
+    size_t msg_size = 0;
+
+    int error = recv(server_socket, &msg_size, sizeof(size_t), 0);
+    ASSERT(error > -1, "Failed to receive message.\n");
+
+    ASSERT(msg_size <= BufferSize, "Message is too large.\n");
+
+    char* buffer_ptr = buffer;
+
+    do {
+      error = recv(server_socket, buffer_ptr, BufferSize, 0);
+      ASSERT(error > -1, "Failed to receive message.\n");
+
+      if (error == 0) {
+        printf("Server disconnected.\n");
+        Disconnect();
+        return false;
+      }
+
+      buffer_ptr += error;
+      msg_size -= error;
+    } while (msg_size > 0);
+
+    return true;
+  }
+
+  // Sends message size then message itself.
+  void Send(size_t msg_size) {
+    int error = send(server_socket, &msg_size, sizeof(size_t), 0);
+    ASSERT(error > -1, "Failed to send message.\n");
+
+    error = send(server_socket, buffer, msg_size, 0);
+    ASSERT(error > -1, "Failed to send message.\n");
+  }
+
   void SendTest() {
     printf("Send test message with size of %lu bytes.\n", BufferSize);
 
@@ -99,11 +123,8 @@ class TcpClient {
       buffer[i] = value;
     }
 
-    int error = send(server_socket, buffer, BufferSize, 0);
-    ASSERT(error > -1, "Failed to send message.\n");
-
-    error = recv(server_socket, buffer, BufferSize, 0);
-    ASSERT(error > 0, "Failed to receive message.\n");
+    Send(BufferSize);
+    Receive();
 
     for (size_t i = 0; i < BufferSize; i++) {
       ASSERT(buffer[i] == value, "Value changed.");
@@ -151,26 +172,20 @@ bool Action() {
 // ============================================================================
 
 int main(int argc, char* argv[]) {
-  if (argc != 5) {
-    printf("Usage: local_ip local_port server_ip server_port\n");
+  if (argc != 3) {
+    printf("Usage: server_ip server_port\n");
     exit(1);
   }
 
-  in_addr_t laddr = 0;
-  ASSERT(inet_pton(AF_INET, argv[1], &laddr), "Invalid IP.\n");
-  
-  in_port_t lport = atoi(argv[2]);
-  lport = htons(lport);
-
   in_addr_t saddr = 0;
-  ASSERT(inet_pton(AF_INET, argv[3], &saddr), "Invalid IP.\n");
+  ASSERT(inet_pton(AF_INET, argv[1], &saddr), "Invalid IP.\n");
   
-  in_port_t sport = atoi(argv[4]);
+  in_port_t sport = atoi(argv[2]);
   sport = htons(sport);
 
-  TcpClient<20 * 1024> client({laddr}, lport);
+  TcpClient<20 * 1024> client;
 
-  if (!client.Connect({saddr}, sport)) {
+  if (!client.Connect(saddr, sport)) {
     printf("Failed to connect to server.\n");
     return 1;
   }

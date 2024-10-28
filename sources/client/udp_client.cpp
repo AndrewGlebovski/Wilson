@@ -21,21 +21,12 @@ class UdpClient {
   static constexpr size_t kBufferSize = 508;
  
  public:
-  // Creates socket and binds it to the provided address.
-  UdpClient(const in_addr& ip, in_port_t port) {
+  // Creates socket.
+  UdpClient() {
     buffer = new char[kBufferSize];
 
     client_socket = socket(AF_INET, SOCK_DGRAM, 0);
     ASSERT(client_socket > -1, "Failed to create client socket.\n");
-
-    sockaddr_in addr = {};
-
-    addr.sin_family = AF_INET;
-    addr.sin_addr = ip;
-    addr.sin_port = port;
-
-    int error = bind(client_socket, (sockaddr*)(&addr), sizeof(addr));
-    ASSERT(error == 0, "Failed to bind client socket.\n");
   }
 
   // Non-Copyable and Non-Movable
@@ -43,14 +34,14 @@ class UdpClient {
   UdpClient& operator=(const UdpClient&) = delete;
 
   // Sends user message then waits for response.
-  void SendReceive(in_addr ip, in_port_t port) {
+  void SendReceive(in_addr_t ip, in_port_t port) {
     printf("You: ");
     EnterMessage(buffer, kBufferSize);
 
     sockaddr_in addr;
 
     addr.sin_family = AF_INET;
-    addr.sin_addr = ip;
+    addr.sin_addr = {ip};
     addr.sin_port = port;
 
     int error = sendto(client_socket, buffer, strlen(buffer) + 1, 0, (sockaddr*)(&addr), sizeof(addr));
@@ -99,27 +90,21 @@ bool Action() {
 // ============================================================================
 
 int main(int argc, char* argv[]) {
-  if (argc != 5) {
-    printf("Usage: local_ip local_port server_ip server_port\n");
+  if (argc != 3) {
+    printf("Usage: server_ip server_port\n");
     exit(1);
   }
 
-  in_addr_t laddr = 0;
-  ASSERT(inet_pton(AF_INET, argv[1], &laddr), "Invalid IP.\n");
-  
-  in_port_t lport = atoi(argv[2]);
-  lport = htons(lport);
-
   in_addr_t saddr = 0;
-  ASSERT(inet_pton(AF_INET, argv[3], &saddr), "Invalid IP.\n");
+  ASSERT(inet_pton(AF_INET, argv[1], &saddr), "Invalid IP.\n");
   
-  in_port_t sport = atoi(argv[4]);
+  in_port_t sport = atoi(argv[2]);
   sport = htons(sport);
 
-  UdpClient client({laddr}, lport);
+  UdpClient client;
   
   while (Action()) {
-    client.SendReceive({saddr}, sport);
+    client.SendReceive(saddr, sport);
   }
   
   printf("Disconnected.\n");

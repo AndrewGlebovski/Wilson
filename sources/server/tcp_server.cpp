@@ -23,7 +23,7 @@ class TcpServer{
  
  public:
   // Creates socket and sets it to listening state.
-  TcpServer(const in_addr& ip, in_port_t port) {
+  TcpServer(in_addr_t ip, in_port_t port) {
     buffer = new char[BufferSize];
 
     passive_socket = socket(AF_INET, SOCK_STREAM, 0);
@@ -32,7 +32,7 @@ class TcpServer{
     sockaddr_in addr = {};
 
     addr.sin_family = AF_INET;
-    addr.sin_addr = ip;
+    addr.sin_addr = {ip};
     addr.sin_port = port;
 
     int error = bind(passive_socket, (sockaddr*)(&addr), sizeof(addr));
@@ -75,12 +75,7 @@ class TcpServer{
       return false;
     }
 
-    int error = recv(client_socket, buffer, BufferSize, 0);
-    ASSERT(error > -1, "Failed to receive message.\n");
-
-    if (error == 0) {
-      printf("Client disconnected.\n");
-      Disconnect();
+    if (!Receive()) {
       return false;
     }
 
@@ -89,8 +84,8 @@ class TcpServer{
     printf("You: ");
     EnterMessage(buffer, BufferSize - 1);
 
-    error = send(client_socket, buffer, strlen(buffer) + 1, 0);
-    ASSERT(error > -1, "Failed to send message.\n");
+    size_t msg_size = strlen(buffer) + 1;
+    Send(msg_size);
 
     return true;
   }
@@ -104,15 +99,49 @@ class TcpServer{
   }
 
  private:
-  void ReceiveTest() {
-    printf("Wait for test message with size of %lu bytes.\n", BufferSize);
+  // Waits for message and stores it in buffer.
+  bool Receive() {
+    size_t msg_size = 0;
 
-    int error = recv(client_socket, buffer, BufferSize, 0);
-    ASSERT(error > 0, "Failed to receive message.\n");
+    int error = recv(client_socket, &msg_size, sizeof(size_t), 0);
+    ASSERT(error > -1, "Failed to receive message.\n");
 
-    error = send(client_socket, buffer, BufferSize, 0);
+    ASSERT(msg_size <= BufferSize, "Message is too large.\n");
+
+    char* buffer_ptr = buffer;
+
+    do {
+      error = recv(client_socket, buffer_ptr, BufferSize, 0);
+      ASSERT(error > -1, "Failed to receive message.\n");
+
+      if (error == 0) {
+        printf("Client disconnected.\n");
+        Disconnect();
+        return false;
+      }
+
+      buffer_ptr += error;
+      msg_size -= error;
+    } while (msg_size > 0);
+
+    return true;
+  }
+
+  // Sends message size then message itself.
+  void Send(size_t msg_size) {
+    int error = send(client_socket, &msg_size, sizeof(size_t), 0);
     ASSERT(error > -1, "Failed to send message.\n");
 
+    error = send(client_socket, buffer, msg_size, 0);
+    ASSERT(error > -1, "Failed to send message.\n");
+  }
+
+  void ReceiveTest() {
+    printf("Wait for test message with size of %lu bytes.\n", BufferSize);
+    
+    Receive();
+    Send(BufferSize);
+    
     printf("Test passed.\n");
   }
 
@@ -167,7 +196,7 @@ int main(int argc, char* argv[]) {
   in_port_t server_port = atoi(argv[2]);
   server_port = htons(server_port);
 
-  TcpServer<20 * 1024> server({server_addr}, server_port);
+  TcpServer<20 * 1024> server(server_addr, server_port);
 
   while (Action()) {
     server.AcceptNext();

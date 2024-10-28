@@ -15,7 +15,7 @@ TCP/UDP client/server application for communication.
 ### TCP
 
 ```sh
-./TcpClient <local_ip> <local_port> <server_ip> <server_port>
+./TcpClient <server_ip> <server_port>
 ```
 
 ```sh
@@ -25,7 +25,7 @@ TCP/UDP client/server application for communication.
 ### UDP
 
 ```sh
-./UdpClient <local_ip> <local_port> <server_ip> <server_port>
+./UdpClient <server_ip> <server_port>
 ```
 
 ```sh
